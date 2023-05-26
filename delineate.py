@@ -72,11 +72,14 @@ def validate(gages_df: pd.DataFrame):
     if len(gages_df['id'].unique()) != len(gages_df):
         raise Exception("Each id in your CSV file must be unique.")
 
-    # Check that lat, lng are numeric
-    column_types = gages_df.dtypes.tolist()
-    for i in [1, 2]:
-        if column_types[i] != 'float64':
-            raise Exception("In outlets CSV, the column {} is not numeric.".format(required_cols[i]))
+    # Check that lat, lng  and area are numeric.
+    
+    for r_col in ['lat', 'lng', 'area']:
+        if gages_df[r_col].dtypes != 'float64':
+            try:
+                gages_df[r_col] = pd.to_numeric(gages_df[r_col], errors='coerce')
+            except ValueError:
+                raise Exception("In outlets CSV, the column {} is not numeric.".format(r_col))
 
     # Check that all the lats are in the right range
     lats = gages_df["lat"].tolist()
@@ -96,7 +99,7 @@ def validate(gages_df: pd.DataFrame):
 
     # Check that every row has an id
     ids = gages_df["id"].tolist()
-
+    
     if not all(len(str(wid)) > 0 for wid in ids):
         raise Exception("Every watershed outlet must have an id in the CSV file")
 
@@ -165,7 +168,7 @@ def get_largest(input_poly, wid):
         return input_poly
 
 
-def plot_polys(polygons, wid):
+def plot_polys(polygons, wid):        
     """
     Plots a list of shapely polygons
 
@@ -192,7 +195,7 @@ def plot_polys(polygons, wid):
         color = np.random.rand(3, )
         gdf.loc[[x]].plot(edgecolor='gray', color=color, ax=ax)
     #plt.show()
-    plt.savefig("plots/{}_vector_catch_sub.png".format(wid))
+    plt.savefig("{}/{}_vector_catch_sub.png".format(PLOTS_SAVE_DIR, wid))
     plt.close(fig)
 
 
@@ -293,9 +296,8 @@ def delineate():
 
         plt.title("Found {} unit catchments for watershed id = {}".format(len(subbasins_gdf), wid))
         #plt.show()
-        plt.savefig("plots/{}_vector_unit_catch.png".format(wid))
+        plt.savefig("{}/{}_vector_unit_catch.png".format(PLOTS_SAVE_DIR, wid))
         plt.close(fig)
-
 
     # Check that the CSV file is there
     if not os.path.isfile(OUTLETS_CSV):
@@ -315,7 +317,7 @@ def delineate():
     bAreas = 'area' in gages_df
     bNames = 'name' in gages_df
     if bAreas:
-        gages_df['area_reported'] = pd.to_numeric(gages_df['area'])
+        gages_df['area_reported'] = pd.to_numeric(gages_df['area'], errors='coerce')
         gages_df.drop(['area'], axis=1, inplace=True)
 
     if HIGH_RES:
@@ -332,11 +334,12 @@ def delineate():
 
     if VERBOSE: print("Finding out which Level 2 megabasin(s) your points are in")
     # This file has the merged basins in it
-    merit_basins_shp = 'data/shp/basins_level2/merit_hydro_vect_level2.shp'
+    merit_basins_shp = 'basins/data/shp/basins_level2/merit_hydro_vect_level2.shp'
     megabasins = gpd.read_file(merit_basins_shp)
-    # The CRS string in the shapefile is EPSG 4326 but does not match verbatim
-    megabasins.to_crs(crs, inplace=True)
-    if not megabasins.loc[0].BASIN == 11:
+    # The CRS string in the shapefile is EPSG 4326 but better to set it explicitly
+    megabasins.crs = "EPSG:4326"
+    # Check the validiy of the megabasins
+    if not megabasins.loc[0].BASIN == 11: # TODO: Find another way for checkinh validity of megabasins 
         raise Exception("An error occurred loading the Level 2 basins shapefile")
 
     # Build spatial index for the basins
@@ -412,7 +415,8 @@ def delineate():
         print("Reading catchment geodata in {}".format(catchments_shp))
         catchments_gdf = gpd.read_file(catchments_shp)
         catchments_gdf.set_index('COMID', inplace=True)
-        catchments_gdf.to_crs(crs, inplace=True)
+        # Set the CRS explicitly
+        catchments_gdf.crs = "EPSG:4326"
         print("  Building spatial index for catchments geodata in basin {}".format(basin))
         catchments_index = catchments_gdf.sindex
 
@@ -565,6 +569,7 @@ def delineate():
             # Let mybasin_gdf be a GeoPandas DataFrame with the geometry, and the id and area of our watershed
             mybasin_gdf = gpd.GeoDataFrame(geometry=mybasin_gs)
             mybasin_gdf['id'] = wid
+            print(f"WIIIIIDD > >>>>> > >  {wid}")
             basin_poly = mybasin_gdf.geometry.values[0]
             up_area = get_area(basin_poly)
             # If the user gave a name and an a priori area to the watershed, include it in the output
@@ -592,7 +597,10 @@ def delineate():
             if bAreas:
                 area_reported = gages_df.loc[wid].area_reported
                 mybasin_gdf['area_reported'] = area_reported
-                perc_diff = sigfig.round((up_area - area_reported) / area_reported * 100, 2)
+                try:
+                    perc_diff = sigfig.round((up_area - area_reported) / area_reported * 100, 2)
+                except ValueError:
+                    perc_diff = None
                 gages_df.at[wid, 'perc_diff'] = perc_diff
 
             # SAVE the Watershed to disk as a GeoJSON file or a shapefile

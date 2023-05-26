@@ -18,6 +18,7 @@ with my watershed boundaries.
 """
 
 import geopandas as gpd
+import numpy as np
 from shapely.geometry import Polygon
 gpd.options.use_pygeos = True
 
@@ -41,6 +42,16 @@ def close_holes(poly: Polygon, area_max: float) -> Polygon:
     Example:
         df.geometry.apply(lambda p: close_holes(p))
     """
+    # Check whether "poly" is a polygon or a multipolygon. If it is a multipolygon,
+    # the polygon with the largest area in the multipolygon is assigned to poly variable.
+    #TODO: check how much this method affects the results 
+    if poly.geom_type == 'Polygon':
+        pass
+    elif poly.geom_type == 'MultiPolygon':
+        Polygons_multi = list(poly.geoms)
+        poly = Polygons_multi[np.argmax([polygon.area for polygon in Polygons_multi])]
+
+
     if area_max == 0:
         if poly.interiors:
             return Polygon(list(poly.exterior.coords))

@@ -69,10 +69,17 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
     inside our unit catchment. It took me a while to figure out this workflow, but it is
     the key to getting accurate results!
     """
-
+    # Check whether "catchment_poly" is a polygon or a multipolygon. If it is a multipolygon,
+    # the polygon with the largest area in the multipolygon is assigned to poly variable. 
+    if catchment_poly.geom_type == 'Polygon':
+        pass
+    elif catchment_poly.geom_type == 'MultiPolygon':
+        Polygons_multi = list(catchment_poly.geoms)
+        catchment_poly = Polygons_multi[np.argmax([polygon.area for polygon in Polygons_multi])]
+        
     # Get a bounding box for the unit catchment
     bounds = catchment_poly.bounds
-    bounds_list = [float(i) for i in bounds]
+    bounds_list = list(bounds)
 
     # The coordinates of the bounding box edges that we get from the above query
     # do not correspond well with the edges of the grid pixels.
@@ -80,7 +87,7 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
     # adjust them by a half-pixel width to get good results in pysheds.
 
     # Distance of a half-pixel
-    halfpix = 0.000416667
+    halfpix = 0.0008333333335070341758 / 2
 
     # Bounding box is xmin, ymin, xmax, ymax
     # round the elements DOWN, DOWN, UP, UP
@@ -88,7 +95,7 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
     # So we just multiply it by 1200, round up or down to the nearest whole number, then divide by 1200
     # to put it back in its regular units of decimal degrees. Then, since pysheds wants the *center*
     # of the pixel, not its edge, add or subtract a half-pixel width as appropriate.
-    # This took me a while to figure out but was essential to getting results that look correct
+    # This took me a while to figure out but was essential  to getting results that look correct
     bounds_list[0] = np.floor(bounds_list[0] * 1200) / 1200 - halfpix
     bounds_list[1] = np.floor(bounds_list[1] * 1200) / 1200 - halfpix
     bounds_list[2] = np.ceil( bounds_list[2] * 1200) / 1200 + halfpix
@@ -142,7 +149,7 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
         plt.title( 'Mask grid for watershed id = {}'.format(wid))
         plt.grid(zorder=-1)
         plt.title("Mask for the unit catchment for watershed id = {}".format(wid))
-        plt.savefig('plots/{}_raster_mask.png'.format(wid))
+        plt.savefig('{}/{}_raster_mask.png'.format(PLOTS_SAVE_DIR, wid))
         plt.close(fig)
 
     # MERIT-Hydro flow direction uses the old ESRI standard for flow direction...
@@ -160,7 +167,7 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
         plt.ylabel('Latitude')
         plt.title('Flow direction grid for watershed id ={}'.format(wid))
         plt.grid(zorder=-1)
-        plt.savefig("plots/{}_raster_flowdir.png".format(wid))
+        plt.savefig("{}/{}_raster_flowdir.png".format(PLOTS_SAVE_DIR, wid))
         plt.close(fig)
 
     if VERBOSE: print("Snapping pour point")
@@ -204,7 +211,7 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
         plt.title('Flow Accumulation Grid for watershed id = {}'.format(wid))
         plt.xlabel('Longitude')
         plt.ylabel('Latitude')
-        plt.savefig("plots/{}_raster_accum.png".format(wid))
+        plt.savefig("{}/{}_raster_accum.png".format(PLOTS_SAVE_DIR, wid))
         plt.close(fig)
 
     # Snap the outlet to the nearest stream. This function depends entirely on the threshold
@@ -214,11 +221,11 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
     # The values here work OK, but I did not test very extensively...
     # A value of 300 prevents the app from finding little tiny watersheds. Not our purpose.
     if bSingleCatchment:
-        numpixels = 500
+        numpixels = 50
     else:
         # Case where there are 2 or more unit catchments in the watershed
         # setting this value too low causes incorrect results and weird topology problems in the output
-        numpixels = 5000
+        numpixels = 2000
 
     if VERBOSE: print("Using threshold of {} for number of upstream pixels.".format(numpixels))
 
@@ -260,7 +267,7 @@ def get_subdivided_merit_polygon(wid: str, basin: int, lat: float, lng: float, c
         plt.xlabel('Longitude')
         plt.ylabel('Latitude')
         plt.title('Delineated Raster Catchment for watershed id = {}'.format(wid))
-        plt.savefig("plots/{}_raster_catchment.png".format(wid))
+        plt.savefig("{}/{}_raster_catchment.png".format(PLOTS_SAVE_DIR, wid))
         plt.close(fig)
 
     # Convert high-precision raster subcatchment to a polygon using pysheds method .polygonize()
